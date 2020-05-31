@@ -1,0 +1,98 @@
+---
+title: "Prediction Course Project"
+output:
+  html_document:
+    keep_md: yes
+  pdf_document: default
+---
+D.V. 31/05/20
+
+
+# Synopsis
+In this work we investigate the quality of execution exercises and try to predict it. The problem is to specify the correct execution and to povide automatic and robust detection of execution mistakes.
+
+
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E) ([read more](http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har)).
+
+
+So, we used data from accelerometers on the belt, forearm, arm, and dumbbell (about 54 predictors in final). In this project, our goal was to predict the manner in which they did the exercise (how correctly they did it).
+
+
+This report describes:
+
+- how the model is built
+- use of cross validation
+- an estimate of model quality
+
+
+Accuracy of our model is ~ 99,4%
+
+
+```{r, warning=FALSE, message=FALSE}
+library(caret)
+library(parallel)
+library(doParallel)
+```
+
+## Preparing data
+
+Now, we load train data, and extract only validated columns (remove timestamps, rownames, mostly NA columns etc.)
+```{r, cache=TRUE}
+set.seed(1313)
+traindata <- read.csv("pml-training.csv",na.strings=c("NA","","#DIV/0!"))
+valid <- read.csv("pml-testing.csv",na.strings=c("NA","","#DIV/0!")) #validation
+
+traindata$classe <- factor(traindata$classe) #make factor
+
+# Taking 60% for the training data and 40% for the test data
+inTrain <- createDataPartition(y = traindata$classe, list = F, p=0.6)
+train <- traindata[inTrain,]
+test <- traindata[-inTrain,]
+
+train <- train[, -c(1:8)] #remove timestamps, rownames, etc.
+train <- train[, -nearZeroVar(train)] #remove near zero vars
+nacols <- apply(train, 2, function(x) sum(is.na(x))/nrow(train) > 0.8)
+train <- train[, !nacols] #remove columns with more than 80% of NA values
+```
+
+## Train RandomForest model
+
+We use the Random Forest model because it automatically selects important variables and is robust to correlated covariates & outliers in general. Random Forest does not depends on preprocessing requirements.
+
+
+For quality estimation we use cross validation technique (by confusionMatrix) based on our test data set.
+
+
+We fit the model by parallel computations.
+```{r, warning=FALSE, cache=TRUE}
+#Configure parallel processing
+cluster <- makeCluster(detectCores() - 1) # convention to leave 1 core for OS
+registerDoParallel(cluster)
+fitControl <- trainControl(method = "cv", number = 5, allowParallel = T)
+  
+#Train Random Forest Model
+rf.model <- train(classe ~ ., data = train, method = "rf", trControl = fitControl)
+cm<-confusionMatrix(predict(rf.model, newdata = test), test$classe)
+
+cm
+
+#De-register parallel processing cluster
+stopCluster(cluster)
+registerDoSEQ()
+```
+As we can see, the accuracy of this model is **`r cm$overall[1]`**. Not bad.
+
+## Prediciting exercise activity using the model
+
+```{r}
+rf.pred <- predict(rf.model, newdata = valid)
+rf.pred
+```
+
+
+
+
+
+
+
+.
